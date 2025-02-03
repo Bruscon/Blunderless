@@ -1,0 +1,9 @@
+project is in good working order
+
+For LLM side:
+	- next I could have the LLM keep a running list of threats
+		- can work that into the iterative prompt
+
+for GUI side:
+	- Next I could make the squares change color based on who controls them
+	- Next I could make the program read my screen and look for a chess board

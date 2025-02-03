@@ -1,0 +1,20 @@
+FEN chess position: rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1
+ASCII chess position: r n b q k b n r
+p p p p p p p p
+. . . . . . . .
+. . . . . . . .
+. . . . P . . .
+. . . . . . . .
+P P P P . P P P
+R N B Q K B N R
+What changed since the last position? 
+
+Who made the last move, us or them? 
+
+What is new in the position?
+
+Are any new pieces attacked?
+
+What is the biggest threat on the chess board right now? 
+
+How should we respond to that threat?

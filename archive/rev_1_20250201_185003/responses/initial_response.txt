@@ -1,0 +1,8 @@
+<think>
+Okay, so I'm trying to figure out how to analyze each move in a chess game using FEN notation. The user wants me to write a prompt that they can send after each move, containing specific questions about the current and previous board positions.
+
+First, I need to understand what FEN is. FEN stands for Forsyth-Edwards Notation, which is a standard way to describe the position of pieces on a chessboard. It includes information about piece placement, whose turn it is, castling rights, en passant squares, and halfmove clocks.
+
+Now, looking at the example prompt provided by the user:
+
+Current board position: <FEN FORMAT BOARD POSITION

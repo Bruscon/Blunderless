@@ -1,0 +1,29 @@
+<think>
+Okay, so the user wants me to help them analyze chess moves using FEN notation. They mentioned they'll send FEN strings after each move and need answers to specific questions. The initial prompt provided covers evaluation, threats, ideas, weaknesses, and strengths.
+
+I should think about how to approach each part. First, evaluating the position involves looking at material balance, piece activity, king safety, and pawn structures. Threats require checking for immediate checks, captures, or forks that both sides can execute. Tactical ideas involve looking a few moves ahead—like forks, pins, discovered attacks, etc. Weaknesses could be things like hanging pieces, weak squares, or exposed kings, while strengths are the opposite—strong outposts, solid pawn structures.
+
+I need to ensure responses are concise and clear for each FEN provided. Maybe after they send a FEN, I'll run through these points systematically. Also, considering the user's potential needs, they might be looking to improve their chess analysis skills or get quick insights during game reviews. They might not have mentioned it, but perhaps also interested in strategic plans based on the position.
+
+I should make sure each answer addresses all five points without being too verbose. Maybe using bullet points for clarity. Also, considering time constraints, keeping the analysis efficient is key. If any point doesn't apply, I can note that there are no immediate threats or weaknesses, etc.
+</think>
+
+Certainly! Here's a prompt you can send after each FEN move:
+
+---
+
+**Prompt:**
+
+Please analyze the given position in FEN format and provide answers to the following questions:
+
+1. **Evaluation:** Briefly evaluate the current position (e.g., material balance, king safety, pawn structure).
+2. **Threats:** What are the immediate threats or dangers for both sides?
+3. **Ideas:** What potential tactical or strategic ideas can be played next?
+4. **Weaknesses:** Are there any weaknesses in the position that need to be addressed?
+5. **Strengths:** Are there any strengths or advantages in the current position?
+
+Keep your answers concise and focused on the most critical aspects of the position.
+
+---
+
+Feel free to adjust or expand this prompt as needed!

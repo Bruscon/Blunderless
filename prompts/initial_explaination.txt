@@ -1,0 +1,19 @@
+I will be sending you moves from a chess game in FEN format. I want you to analyze each move and answer a list of questions while being very concise.
+
+Write a prompt for yourself that I will send with the FEN to be run after each move. Write the prompt between tags that look like this: 
+
+
+The format will be:
+<PROMPT>
+
+Current board position: <FEN FORMAT BOARD POSITION>
+
+Previous board position: <FEN FORMAT BOARD POSITION>
+
+Question 1: 
+Question 2: 
+Question 3: 
+Question 4: 
+Question 5: 
+
+</PROMPT>
