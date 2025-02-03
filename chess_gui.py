@@ -1,6 +1,7 @@
 import tkinter as tk
 import chess
 import os
+import time
 
 class ChessGUI:
     def __init__(self, root):
@@ -21,6 +22,15 @@ class ChessGUI:
         self.canvas = tk.Canvas(self.root, width=self.BOARD_SIZE, height=self.BOARD_SIZE)
         self.canvas.pack()
         
+        # Base colors for squares
+        self.LIGHT_SQUARE = "#DDB88C"
+        self.DARK_SQUARE = "#A66D4F"
+        
+        # Control colors with alpha values
+        self.WHITE_CONTROL = "#00ff0033"  # Green with low alpha
+        self.BLACK_CONTROL = "#ff000033"  # Red with low alpha
+        self.BOTH_CONTROL = "#80008033"   # Purple with low alpha
+        
         # Unicode chess pieces
         self.pieces = {
             'P': '♙', 'N': '♘', 'B': '♗', 'R': '♖', 'Q': '♕', 'K': '♔',
@@ -40,17 +50,21 @@ class ChessGUI:
     
     def update(self):
         """Periodic update function"""
-        # Add any periodic updates here
-        
-        # Schedule next update
-        self.root.after(100, self.update)
+        try:
+            self.draw_board()
+            self.draw_pieces()
+        except Exception as e:
+            print(f"Error in update cycle: {e}")
+        finally:
+            # Schedule next update with a longer interval (e.g., 500ms instead of 100ms)
+            self.root.after(100, self.update)
     
     def set_move_callback(self, callback):
         """Set a function to be called when a move is made"""
         self.move_callback = callback
     
     def draw_board(self):
-        """Draw the chess board squares"""
+        """Draw the chess board squares with control visualization"""
         for row in range(8):
             for col in range(8):
                 x1 = col * self.SQUARE_SIZE
@@ -58,8 +72,16 @@ class ChessGUI:
                 x2 = x1 + self.SQUARE_SIZE
                 y2 = y1 + self.SQUARE_SIZE
                 
-                # Alternate square colors
-                color = "#DDB88C" if (row + col) % 2 == 0 else "#A66D4F"
+                # Calculate the chess square
+                square = chess.square(col, 7 - row)
+                
+                # Calculate control of this square
+                white_control, black_control = self.calculate_square_control(square)
+                
+                # Get square color based on control
+                color = self.get_square_color(row, col, white_control, black_control)
+                
+                # Draw the square
                 self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
     
     def draw_pieces(self):
@@ -79,16 +101,20 @@ class ChessGUI:
         file = x // self.SQUARE_SIZE
         rank = 7 - (y // self.SQUARE_SIZE)
         return chess.square(file, rank)
-    
+
     def on_square_clicked(self, event):
         """Handle mouse clicks on the board"""
+        print(f"Click detected at ({event.x}, {event.y})")  # Debug print
         square = self.get_square_from_coords(event.x, event.y)
         
         if self.selected_square is None:
             # First click - select piece
             piece = self.board.piece_at(square)
             if piece:
+                print(f"Selected piece: {piece.symbol()} at {chess.square_name(square)}")  # Debug print
                 self.selected_square = square
+                # Clear any existing highlights
+                self.canvas.delete("highlight")
                 # Highlight selected square
                 x = (chess.square_file(square) * self.SQUARE_SIZE)
                 y = ((7 - chess.square_rank(square)) * self.SQUARE_SIZE)
@@ -97,24 +123,22 @@ class ChessGUI:
         else:
             # Second click - try to make move
             move = chess.Move(self.selected_square, square)
+            print(f"Attempting move from {chess.square_name(self.selected_square)} to {chess.square_name(square)}")  # Debug print
             if move in self.board.legal_moves:
-                print(f"Move number: {self.get_move_number()}")
                 self.board.push(move)
+                print(f"Move successful: {move}")  # Debug print
                 self.save_position()
                 self.canvas.delete("highlight")
-                self.draw_pieces()
                 
                 # Notify callback if set
                 if self.move_callback:
                     self.move_callback(move)
-                
-                # Check for game end conditions
-                if self.board.is_game_over():
-                    result = "1-0" if self.board.is_checkmate() and self.board.turn == chess.BLACK else "0-1"
-                    print(f"Game Over! Result: {result}")
+            else:
+                print(f"Illegal move attempted: {move}")  # Debug print
             
             self.selected_square = None
             self.canvas.delete("highlight")
+
     
     def get_board_state(self):
         """Return the current state of the board"""
@@ -160,3 +184,45 @@ class ChessGUI:
                 self.move_callback(move)
             return True
         return False
+
+    def calculate_square_control(self, square):
+        try:
+            white_control = len(list(self.board.attackers(chess.WHITE, square)))
+            black_control = len(list(self.board.attackers(chess.BLACK, square)))
+            return white_control, black_control
+        except Exception as e:
+            print(f"Error calculating control: {e}")
+            return 0, 0
+        
+    def get_square_color(self, row, col, white_control, black_control):
+        """Get the color for a square based on control and base color"""
+        # Base color
+        base_color = self.LIGHT_SQUARE if (row + col) % 2 == 0 else self.DARK_SQUARE
+        
+        # Convert hex to RGB
+        base_r = int(base_color[1:3], 16)
+        base_g = int(base_color[3:5], 16)
+        base_b = int(base_color[5:7], 16)
+        
+        # Calculate control intensity (adjust these factors to change color intensity)
+        white_intensity = min(white_control * 0.2, 1.0)  # 20% more green per controlling piece
+        black_intensity = min(black_control * 0.2, 1.0)  # 20% more red per controlling piece
+        
+        if white_control > 0 and black_control > 0:
+            # Purple tint for contested squares
+            r = min(base_r + int(128 * max(white_intensity, black_intensity)), 255)
+            g = base_g
+            b = min(base_b + int(128 * max(white_intensity, black_intensity)), 255)
+        else:
+            # Green tint for white control
+            r = base_r
+            g = min(base_g + int(128 * white_intensity), 255)
+            b = base_b
+            
+            # Red tint for black control
+            r = min(r + int(128 * black_intensity), 255)
+            g = g
+            b = b
+        
+        # Convert back to hex
+        return f"#{r:02x}{g:02x}{b:02x}"

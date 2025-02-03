@@ -46,41 +46,30 @@ def ask_LLM(question):
         return "Error decoding output. Ensure the model's response is UTF-8 compatible."
 
 def process_moves_thread(gui, move_queue):
-    """Process moves from the queue"""
     try:
-        # # Check for moves without blocking
-        # move = move_queue.get_nowait()
-
-        # Block until a move is available
-        move = move_queue.get()
-        
-        # Print move and new position
+        # Use get_nowait() instead of get()
+        move = move_queue.get_nowait()
         print(f"\nMove made: {move}")
         print("New position:")
         print(gui.get_board_state())
-        
-        # Your move processing code here
-        # For example:
-        # analyze_position()
-        # make_computer_move()
-        # etc.
-        
     except queue.Empty:
         pass
+    finally:
+        # Always reschedule
+        gui.root.after(100, process_moves_thread, gui, move_queue)
 
+    # prompt =    "FEN chess position: " + gui.board.fen() + \
+    #             "\nASCII chess position: " + str(gui.get_board_state()) + "\n" +\
+    #             read_from_file("prompts/questions.txt")
 
-    prompt =    "FEN chess position: " + gui.board.fen() + \
-                "\nASCII chess position: " + str(gui.get_board_state()) + "\n" +\
-                read_from_file("prompts/questions.txt")
+    # # Determine if it's White's or Black's move that just happened
+    # # Note: board.turn gives the color to move next, so we need the opposite
+    # color = 'w' if gui.board.turn == chess.BLACK else 'b'
+    # write_to_file(prompt, f"rev_1/prompts/move_{gui.get_move_number()}_{color}_prompt.txt")
 
-    # Determine if it's White's or Black's move that just happened
-    # Note: board.turn gives the color to move next, so we need the opposite
-    color = 'w' if gui.board.turn == chess.BLACK else 'b'
-    write_to_file(prompt, f"rev_1/prompts/move_{gui.get_move_number()}_{color}_prompt.txt")
-
-    answer = ask_LLM(prompt)
-    print(answer)
-    write_to_file(answer, f"rev_1/responses/move_{gui.get_move_number()}_{color}_analysis.txt")
+    # answer = ask_LLM(prompt)
+    # print(answer)
+    # write_to_file(answer, f"rev_1/responses/move_{gui.get_move_number()}_{color}_analysis.txt")
     
     # Schedule the next check
     gui.root.after(100, process_moves_thread, gui, move_queue)
@@ -96,16 +85,28 @@ if __name__ == "__main__":
     root = tk.Tk()
     gui = ChessGUI(root)
     
+    def process_move():
+        """Process moves from the queue without blocking"""
+        try:
+            move = move_queue.get_nowait()
+            print(f"\nProcessing move: {move}")
+            print("New position:")
+            print(gui.get_board_state())
+        except queue.Empty:
+            pass
+        finally:
+            # Schedule next check
+            root.after(100, process_move)
+    
     # Set up move callback
     def on_move(move):
+        print(f"Move callback triggered: {move}")
         move_queue.put(move)
+    
     gui.set_move_callback(on_move)
     
-    # Start move processing in a separate thread
-    move_thread = threading.Thread(target=process_moves_thread, 
-                                 args=(gui, move_queue),
-                                 daemon=True)
-    move_thread.start()
+    # Start move processing using after() instead of a separate thread
+    root.after(100, process_move)
     
     # Start the GUI main loop
     root.mainloop()
