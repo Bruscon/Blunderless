@@ -1,0 +1,54 @@
+The project is a chess GUI application built in Python using tkinter, with the code organized into four main files:
+
+board_state.py: Handles all chess game logic including:
+
+Move validation and execution
+Game state tracking
+Square control calculation
+Move history and undo functionality
+
+
+file_manager.py: Manages all file operations including:
+
+Saving/loading game positions in JSON format
+Managing directory structure
+Session archiving
+Position history cleanup
+
+
+chess_gui.py: Handles visualization and user interaction with:
+
+Interactive chess board with click-to-move interface
+Square control visualization (colors showing piece influence)
+Move highlighting
+Status updates and game info display
+Control panel with buttons for new game, undo, and save position
+
+
+main.py: Application entry point providing:
+
+Command-line argument parsing (log level, theme selection)
+Logging configuration
+Window management
+Component initialization and coordination
+
+
+
+Key Features:
+
+Visual square control system showing which squares are attacked by which side
+Position saving after each move
+Undo move functionality
+Multiple color themes
+Session logging
+Error handling and recovery
+Auto-archiving of game sessions
+
+The application uses:
+
+python-chess for core chess logic
+tkinter for the GUI
+Standard library components for file operations
+Logging for debugging and error tracking
+
+The code follows object-oriented principles with clean separation of concerns, making it easy to extend with new features. 

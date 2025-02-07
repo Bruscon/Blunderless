@@ -5,5 +5,5 @@ For LLM side:
 		- can work that into the iterative prompt
 
 for GUI side:
-	- Next I could make the squares change color based on who controls them
+	- Next I could make the squares change color based on who controls them	DONE
 	- Next I could make the program read my screen and look for a chess board
