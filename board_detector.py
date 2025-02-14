@@ -1,203 +1,244 @@
 import cv2
 import numpy as np
-from typing import List, Tuple, Optional
 import os
+from typing import List, Tuple, Optional
 
 class BoardDetector:
-    def __init__(self, target_size: int = 800):
-        self.target_size = target_size
-        self.square_size = target_size // 8
+    def __init__(self, debug_output: bool = True):
+        """Initialize the board detector."""
+        self.debug_output = debug_output
+        self.debug_dir = "images/debug"
+        if debug_output:
+            os.makedirs(self.debug_dir, exist_ok=True)
 
-    def preprocess_image(self, image: np.ndarray) -> np.ndarray:
+    def save_debug_image(self, name: str, image: np.ndarray) -> None:
+        """Save a debug image if debug output is enabled."""
+        if self.debug_output:
+            cv2.imwrite(os.path.join(self.debug_dir, f"{name}.png"), image)
+
+    def find_main_board(self, image: np.ndarray) -> Tuple[np.ndarray, Tuple[int, int, int, int]]:
         """
-        Preprocess the screenshot specifically for chess.com board detection.
-        Uses edge detection to find the white border of the board.
+        Find the main chess board in the image using contour detection.
         
         Args:
-            image: Input image in BGR format
-        
+            image: Input BGR image
+            
         Returns:
-            Processed binary image
+            Tuple of (cropped board image, (x, y, w, h) of board)
         """
         # Convert to grayscale
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        cv2.imwrite("images/debug_gray.png", gray)
         
-        # Detect edges with lower threshold to catch the board border
-        edges = cv2.Canny(gray, 30, 100)
-        cv2.imwrite("images/debug_edges.png", edges)
-        
-        # Dilate edges to connect them
-        kernel = np.ones((5,5), np.uint8)
-        dilated = cv2.dilate(edges, kernel, iterations=2)
-        cv2.imwrite("images/debug_dilated.png", dilated)
-        
-        return dilated
-
-    def detect_board_bounds(self, binary_image: np.ndarray) -> Tuple[Tuple[int, int], Tuple[int, int]]:
-        """
-        Detect chess board boundaries by finding the consistent checkerboard pattern and rank/file markers.
-        
-        Args:
-            binary_image: Edge-detected and dilated image
-        
-        Returns:
-            Tuple of ((min_x, min_y), (max_x, max_y)) representing board bounds
-        """
-        height, width = binary_image.shape
-        print(f"Processing image of size: {width}x{height}")
+        # Apply thresholding
+        _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+        self.save_debug_image("01_initial_thresh", thresh)
         
         # Find contours
-        contours, _ = cv2.findContours(binary_image, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        print(f"Found {len(contours)} contours")
+        contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
-        # Draw all contours for debugging
-        debug_contours = np.zeros((height, width, 3), dtype=np.uint8)
-        cv2.drawContours(debug_contours, contours, -1, (0,255,0), 2)
-        cv2.imwrite("images/debug_all_contours.png", debug_contours)
-        
-        # Sort contours by area, largest first
+        # Sort contours by area and look for largest square-like contour
         contours = sorted(contours, key=cv2.contourArea, reverse=True)
         
-        # Try to find a square-like contour among the largest contours
-        for contour in contours[:10]:  # Only check the 10 largest contours
-            # Approximate the contour to a polygon
-            epsilon = 0.02 * cv2.arcLength(contour, True)
-            approx = cv2.approxPolyDP(contour, epsilon, True)
+        for contour in contours[:5]:  # Check top 5 largest contours
+            x, y, w, h = cv2.boundingRect(contour)
+            aspect_ratio = float(w)/h
+            area_ratio = w*h / (image.shape[0]*image.shape[1])
             
-            # If it has 4 vertices, it might be our board
-            if len(approx) == 4:
-                x, y, w, h = cv2.boundingRect(approx)
-                aspect_ratio = w / float(h)
-                area = w * h
-                area_ratio = area / (width * height)
+            # Look for square-ish contour that takes up reasonable portion of image
+            if 0.8 < aspect_ratio < 1.2 and 0.2 < area_ratio < 0.9:
+                # Draw detected board region
+                debug_img = image.copy()
+                cv2.rectangle(debug_img, (x, y), (x+w, y+h), (0,255,0), 2)
+                self.save_debug_image("02_detected_board", debug_img)
                 
-                print(f"Found potential board: aspect_ratio={aspect_ratio:.2f}, area_ratio={area_ratio:.2f}")
+                return image[y:y+h, x:x+w], (x, y, w, h)
                 
-                # The board should be a significant portion of the image
-                # and should be roughly square
-                if area_ratio > 0.2 and 0.9 < aspect_ratio < 1.1:
-                    # Calculate the size of one square (board is 8x8)
-                    square_size = w // 8
-                    
-                    # Adjust bounds to perfectly contain 8x8 squares plus a small margin
-                    adjusted_x = x - 2  # Small margin for the rank numbers
-                    adjusted_y = y - 2  # Small margin for any top border
-                    adjusted_w = square_size * 8 + 4  # Add margins
-                    adjusted_h = square_size * 8 + 4  # Add margins
-                    
-                    # Draw final detected board
-                    debug_final = np.zeros((height, width, 3), dtype=np.uint8)
-                    cv2.drawContours(debug_final, [approx], -1, (0,0,255), 2)
-                    cv2.rectangle(debug_final, 
-                                (adjusted_x, adjusted_y), 
-                                (adjusted_x + adjusted_w, adjusted_y + adjusted_h), 
-                                (255,0,0), 2)
-                    cv2.imwrite("images/debug_final_detection.png", debug_final)
-                    
-                    return (adjusted_x, adjusted_y), (adjusted_x + adjusted_w, adjusted_y + adjusted_h)
-        
-        raise ValueError("Could not detect chess board")
-        
-        raise ValueError("Could not detect chess board")
+        raise ValueError("Could not find main chess board")
 
-    def extract_board(self, image: np.ndarray, bounds: Tuple[Tuple[int, int], Tuple[int, int]]) -> np.ndarray:
+    def snap_to_edge(self, pos: int, is_vertical: bool, image_width: int, image_height: int, edges: np.ndarray, window: int = 3) -> int:
         """
-        Extract and resize the chess board from the image.
+        Snap a grid line position to the nearest strong edge.
         
         Args:
-            image: Original image
-            bounds: Board boundaries as ((min_x, min_y), (max_x, max_y))
+            pos: Initial line position
+            is_vertical: True if vertical line, False if horizontal
+            image_width: Width of the image
+            image_height: Height of the image
+            edges: Edge detection output
+            window: Pixel window to search for edges
         
         Returns:
-            Extracted and resized board image
+            Adjusted line position
         """
-        (min_x, min_y), (max_x, max_y) = bounds
-        
-        # Extract board region
-        board = image[min_y:max_y, min_x:max_x]
-        
-        # Resize to target size
-        board = cv2.resize(board, (self.target_size, self.target_size))
-        
-        return board
+        # Handle boundary cases specifically
+        if is_vertical and (pos <= window or pos >= image_width - window):
+            return pos  # Keep exact position for first and last vertical lines
+        if not is_vertical and (pos <= window or pos >= image_height - window):
+            return pos  # Keep exact position for first and last horizontal lines
+            
+        if is_vertical:
+            # Look in vertical strip around proposed x position
+            strip = edges[:, max(0, pos-window):min(image_width, pos+window)]
+            if strip.any():  # If any edges found in strip
+                # Find the strongest edge in the strip
+                edge_strength = np.sum(strip, axis=0)
+                offset = np.argmax(edge_strength)
+                return pos - window + offset
+        else:
+            # Look in horizontal strip around proposed y position
+            strip = edges[max(0, pos-window):min(image_height, pos+window), :]
+            if strip.any():  # If any edges found in strip
+                # Find the strongest edge in the strip
+                edge_strength = np.sum(strip, axis=1)
+                offset = np.argmax(edge_strength)
+                return pos - window + offset
+        return pos
 
-    def extract_squares(self, board_image: np.ndarray) -> List[np.ndarray]:
+    def find_grid_lines(self, board_image: np.ndarray) -> Tuple[List[int], List[int]]:
         """
-        Extract individual squares from the board image.
+        Find grid lines using advanced edge detection and line snapping.
         
         Args:
-            board_image: Chess board image
-        
+            board_image: Cropped chess board image
+            
         Returns:
-            List of 64 square images
+            Tuple of (x_coordinates, y_coordinates) for grid lines
         """
+        height, width = board_image.shape[:2]
+        
+        # Convert to grayscale and enhance contrast
+        gray = cv2.cvtColor(board_image, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+        enhanced = clahe.apply(gray)
+        
+        # Multi-scale edge detection
+        edges_low = cv2.Canny(enhanced, 30, 90)
+        edges_high = cv2.Canny(enhanced, 90, 270)
+        edges = cv2.addWeighted(edges_low, 0.5, edges_high, 0.5, 0)
+        
+        # Enhance horizontal and vertical edges separately
+        kernel_h = np.ones((1, 3), np.uint8)
+        kernel_v = np.ones((3, 1), np.uint8)
+        edges_h = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel_h)
+        edges_v = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel_v)
+        
+        self.save_debug_image("03a_edges_horizontal", edges_h)
+        self.save_debug_image("03b_edges_vertical", edges_v)
+        
+        # Calculate initial grid positions
+        x_coords = [round(width * i / 8) for i in range(9)]
+        y_coords = [round(height * i / 8) for i in range(9)]
+        
+        # Snap lines to edges with adaptive window size
+        def adaptive_window(pos: int, max_dim: int) -> int:
+            # Use larger window in middle of board, smaller near edges
+            rel_pos = min(pos, max_dim - pos) / max_dim
+            return max(3, min(7, round(5 * rel_pos)))
+        
+        # Snap vertical lines using vertical edge map
+        x_coords = [
+            self.snap_to_edge(x, True, width, height, edges_v, 
+                             window=adaptive_window(x, width))
+            for x in x_coords
+        ]
+        
+        # Snap horizontal lines using horizontal edge map
+        y_coords = [
+            self.snap_to_edge(y, False, width, height, edges_h,
+                             window=adaptive_window(y, height))
+            for y in y_coords
+        ]
+        
+        # Ensure minimum spacing between lines
+        def enforce_spacing(coords: List[int], min_spacing: int) -> List[int]:
+            for i in range(1, len(coords)):
+                if coords[i] - coords[i-1] < min_spacing:
+                    coords[i] = coords[i-1] + min_spacing
+            return coords
+        
+        min_spacing = min(width, height) // 10  # Minimum 1/10th of board size
+        x_coords = enforce_spacing(x_coords, min_spacing)
+        y_coords = enforce_spacing(y_coords, min_spacing)
+        
+        # Draw debug visualization
+        debug_img = board_image.copy()
+        
+        # Draw vertical lines
+        for x in x_coords:
+            cv2.line(debug_img, (x, 0), (x, height), (0, 0, 255), 1)
+            
+        # Draw horizontal lines
+        for y in y_coords:
+            cv2.line(debug_img, (0, y), (width, y), (0, 255, 0), 1)
+            
+        self.save_debug_image("04_grid_lines", debug_img)
+        
+        return x_coords, y_coords
+
+    def extract_squares(self, board_image: np.ndarray, x_coords: List[int], y_coords: List[int]) -> List[Tuple[int, int, np.ndarray]]:
+        """
+        Extract individual squares using grid line coordinates.
+        
+        Args:
+            board_image: Cropped chess board image
+            x_coords: X coordinates of vertical grid lines
+            y_coords: Y coordinates of horizontal grid lines
+            
+        Returns:
+            List of tuples (rank, file, square_image) in row-major order (a8 to h1)
+        """
+        height, width = board_image.shape[:2]
         squares = []
-        MARGIN = 4  # Must match template processor margin
+        debug_img = board_image.copy()
         
-        # Get all squares
-        files = 'abcdefgh'
+        # Extract each square
         for rank in range(8):
             for file in range(8):
-                # Calculate square coordinates
-                x = file * self.square_size
-                y = rank * self.square_size
+                # Get square corners with boundary checks
+                x1 = min(max(x_coords[file], 0), width - 1)
+                x2 = min(max(x_coords[file + 1], x1 + 1), width)
+                y1 = min(max(y_coords[rank], 0), height - 1)
+                y2 = min(max(y_coords[rank + 1], y1 + 1), height)
                 
-                # Extract square
-                square = board_image[
-                    y:y + self.square_size,
-                    x:x + self.square_size
-                ]
+                # Extract and resize square
+                square = board_image[y1:y2, x1:x2]
+                square = cv2.resize(square, (64, 64), interpolation=cv2.INTER_AREA)
                 
-                # Resize to 64x64
-                square = cv2.resize(square, (64, 64))
+                # Store square with its position
+                squares.append((rank, file, square))
                 
-                # Crop margins
-                h, w = square.shape[:2]
-                square = square[MARGIN:h-MARGIN, MARGIN:w-MARGIN]
-                
-                # Resize back to 64x64 after cropping
-                square = cv2.resize(square, (64, 64))
-                
-                # Convert to grayscale
-                square_gray = cv2.cvtColor(square, cv2.COLOR_BGR2GRAY)
-                
-                # Save processed square with chess notation (e.g., 'e4')
-                square_name = f"{files[file]}{8-rank}"
-                cv2.imwrite(f"images/square_{square_name}.png", square_gray)
-                
-                squares.append((rank, file, square_gray))
+                # Draw square outline on debug image
+                cv2.rectangle(debug_img, (x1, y1), (x2, y2), (0, 255, 0), 1)
+                # Add coordinate labels for debugging
+                label = f"{rank},{file}"
+                cv2.putText(debug_img, label, (x1 + 5, y1 + 20), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 0, 255), 1)
         
+        self.save_debug_image("05_extracted_squares", debug_img)
         return squares
 
     def process_image(self, image_path: str) -> Tuple[np.ndarray, List[np.ndarray]]:
         """
-        Process a chess board screenshot and extract squares.
+        Process a chess board screenshot.
         
         Args:
-            image_path: Path to the input image
-        
+            image_path: Path to input image
+            
         Returns:
             Tuple of (board_image, list_of_squares)
         """
-        # Create images directory if it doesn't exist
-        os.makedirs("images", exist_ok=True)
-        
         # Read image
         image = cv2.imread(image_path)
         if image is None:
             raise ValueError(f"Could not read image: {image_path}")
+            
+        # Find and extract the main board region
+        board_image, board_rect = self.find_main_board(image)
         
-        # Preprocess image
-        binary = self.preprocess_image(image)
-        
-        # Detect board boundaries
-        bounds = self.detect_board_bounds(binary)
-        
-        # Extract board
-        board = self.extract_board(image, bounds)
+        # Find grid lines
+        x_coords, y_coords = self.find_grid_lines(board_image)
         
         # Extract squares
-        squares = self.extract_squares(board)
+        squares = self.extract_squares(board_image, x_coords, y_coords)
         
-        return board, squares
+        return board_image, squares
