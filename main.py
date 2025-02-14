@@ -9,7 +9,7 @@ from datetime import datetime
 from chess_gui import ChessGUI, GuiConfig
 from file_manager import FileManager, FileConfig
 from board_state import BoardState
-from board_detection import ChessBoardDetector
+#from board_detection import ChessBoardDetector
 
 # Configure logging
 def setup_logging(log_level: str = "INFO") -> None:

@@ -3,7 +3,7 @@ import numpy as np
 from typing import Dict, Optional, Tuple, List
 import os
 
-class ChessPieceDetector:
+class PieceDetector:
     def __init__(self, template_dir: str, threshold: float = 0.6):
         """
         Initialize the chess piece detector with templates.

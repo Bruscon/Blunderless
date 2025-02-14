@@ -29,3 +29,6 @@ dist/
 
 archive/
 rev_1/
+images/?
+images/
+templates/
