@@ -164,7 +164,6 @@ class ChessApplication:
             screenshot_path = "chess_screenshot.png"
             img.save(screenshot_path)
             
-            self.logger.info(f"Screenshot saved to {screenshot_path}")
             return screenshot_path
             
         except Exception as e:
@@ -174,8 +173,6 @@ class ChessApplication:
     def process_board_position(self):
         """Process screenshot to detect chess position and update the board"""
         try:
-            logging.basicConfig(level=logging.INFO)
-            self.logger = logging.getLogger(__name__)
             self.logger.info("Processing board position...")
             
             # Process the image through board detector
@@ -183,29 +180,22 @@ class ChessApplication:
             
             # Detect pieces and get FEN string
             fen = self.piece_detector.detect_board(squares)
+            self.logger.info(f"Detected FEN: {fen}")
             
             # Add required FEN fields for a complete FEN string if not present
             if len(fen.split()) == 1:
                 fen = f"{fen} w KQkq - 0 1"
                 
-            # After FEN detection:
-            self.logger.info(f"Detected FEN: {fen}")
-
             # Update the board state with new position
             self.gui.board_state = BoardState()  # Reset board state
             self.gui.board_state.board.set_fen(fen)
-            
-            # After setting FEN:
             self.logger.info(f"Current board FEN: {self.gui.board_state.get_fen()}")
-
+            
             # Force GUI refresh
             self.root.update_idletasks()
             self.gui.update_display()
-            self.gui.redraw_board()
             
             self.logger.info(f"Board position updated from image: {fen}")
-
-
             
         except Exception as e:
             self.logger.error(f"Board position processing failed: {e}")

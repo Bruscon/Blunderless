@@ -67,6 +67,13 @@ Auto-archiving of game sessions
 Automatic board position detection from screenshots
 Robust piece recognition across different board themes
 FEN string generation for detected positions
+Auto-capture features:
+- Continuous board position detection from screen captures
+- Non-blocking background processing
+- Toggle with spacebar control
+- Responsive GUI during capture
+- Automatic board state synchronization
+- Comprehensive logging of capture operations
 
 The application uses:
 
@@ -110,3 +117,4 @@ Provides confidence scores for detections
 Generates debug visualizations for verification
 
 The code follows object-oriented principles with clean separation of concerns, making it easy to extend with new features. The computer vision components are designed to be robust across different board themes and lighting conditions, with extensive debug output options for troubleshooting.
+The application uses threading for resource-intensive operations like screen capture and board detection to maintain GUI responsiveness. Error handling and logging are implemented throughout the codebase to aid in debugging and monitoring.
