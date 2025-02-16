@@ -137,7 +137,6 @@ class ChessGUI:
         self.status_bar.pack(side='bottom', fill='x')
 
     def _setup_control_panel(self) -> ttk.Frame:
-        """Set up the control panel with buttons and info"""
         panel = ttk.Frame(self.main_frame)
         panel.pack(side='right', fill='y', padx=5)
         
@@ -145,6 +144,7 @@ class ChessGUI:
         ttk.Button(panel, text="New Game", command=self._new_game).pack(pady=5)
         ttk.Button(panel, text="Undo Move", command=self._undo_move).pack(pady=5)
         ttk.Button(panel, text="Save Position", command=self._save_position).pack(pady=5)
+        ttk.Button(panel, text="Flip Board", command=self._toggle_orientation).pack(pady=5)  # Add this line
         
         # Game info
         self.info_frame = ttk.LabelFrame(panel, text="Game Info")
@@ -168,13 +168,25 @@ class ChessGUI:
         """Convert canvas coordinates to chess square"""
         file = x // self.config.SQUARE_SIZE
         rank = 7 - (y // self.config.SQUARE_SIZE)
+        
+        if not self.board_state.white_on_bottom:
+            # Flip coordinates when black is on bottom
+            file = 7 - file
+            rank = 7 - rank
+            
         return chess.square(file, rank)
 
     def _get_coords_from_square(self, square: int) -> Tuple[int, int]:
         """Convert chess square to canvas coordinates"""
         file = chess.square_file(square)
-        rank = 7 - chess.square_rank(square)
-        return (file * self.config.SQUARE_SIZE, rank * self.config.SQUARE_SIZE)
+        rank = chess.square_rank(square)
+        
+        if not self.board_state.white_on_bottom:
+            # Flip coordinates when black is on bottom
+            file = 7 - file
+            rank = 7 - rank
+            
+        return (file * self.config.SQUARE_SIZE, (7 - rank) * self.config.SQUARE_SIZE)
 
     def _on_square_clicked(self, event) -> None:
         """Handle mouse clicks on the board"""
@@ -242,6 +254,13 @@ class ChessGUI:
         self.board_state.selected_square = None
         self.canvas.delete("highlight")
 
+    def _toggle_orientation(self) -> None:
+        """Toggle the board orientation"""
+        self.board_state.toggle_orientation()
+        self._deselect()  # Clear any selections
+        self.update_display()  # Redraw the board
+        self.set_status(f"Board flipped - {'White' if self.board_state.white_on_bottom else 'Black'} on bottom")
+
     def draw_board(self) -> None:
             """Draw the chess board with grid lines and control numbers"""
             # First draw base squares
@@ -304,8 +323,16 @@ class ChessGUI:
         for square in chess.SQUARES:
             piece = self.board_state.get_piece_at(square)
             if piece:
-                x = chess.square_file(square) * self.config.SQUARE_SIZE
-                y = (7 - chess.square_rank(square)) * self.config.SQUARE_SIZE
+                file = chess.square_file(square)
+                rank = chess.square_rank(square)
+                
+                if not self.board_state.white_on_bottom:
+                    # Flip coordinates when black is on bottom
+                    file = 7 - file
+                    rank = 7 - rank
+                    
+                x = file * self.config.SQUARE_SIZE
+                y = (7 - rank) * self.config.SQUARE_SIZE
                 
                 if hasattr(self, 'use_unicode'):
                     # Fallback to Unicode pieces
