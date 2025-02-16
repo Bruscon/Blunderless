@@ -243,46 +243,60 @@ class ChessGUI:
         self.canvas.delete("highlight")
 
     def draw_board(self) -> None:
-        """Draw the chess board with grid lines"""
-        # First draw base squares
-        for row in range(8):
-            for col in range(8):
-                x1 = col * self.config.SQUARE_SIZE
-                y1 = row * self.config.SQUARE_SIZE
-                x2 = x1 + self.config.SQUARE_SIZE
-                y2 = y1 + self.config.SQUARE_SIZE
-                
-                # Use light gray as base color for better piece visibility
-                base_color = "#E0E0E0"  # Light gray background
-                
-                # Apply control visualization
-                square = chess.square(col, 7 - row)
-                control = self.board_state.calculate_square_control(square)
-                color = self._modify_color_for_control(base_color, control)
-                
-                # Draw square with color but no outline
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
-        
-        # Then draw grid lines
-        for i in range(9):  # Draw 9 lines to create 8 squares
-            # Calculate coordinates
-            coord = i * self.config.SQUARE_SIZE
+            """Draw the chess board with grid lines and control numbers"""
+            # First draw base squares
+            for row in range(8):
+                for col in range(8):
+                    x1 = col * self.config.SQUARE_SIZE
+                    y1 = row * self.config.SQUARE_SIZE
+                    x2 = x1 + self.config.SQUARE_SIZE
+                    y2 = y1 + self.config.SQUARE_SIZE
+                    
+                    # Use light gray as base color for better piece visibility
+                    base_color = "#E0E0E0"  # Light gray background
+                    
+                    # Apply control visualization
+                    square = chess.square(col, 7 - row)
+                    control = self.board_state.calculate_square_control(square)
+                    color = self._modify_color_for_control(base_color, control)
+                    
+                    # Draw square with color but no outline
+                    self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
+                    
+                    # Add control number to top right corner
+                    net_control = control.white_control - control.black_control
+                    if net_control != 0:  # Only show non-zero values
+                        # Position text in top right with small padding
+                        text_x = x2 - 10  # 10 pixels from right edge
+                        text_y = y1 + 10  # 10 pixels from top edge
+                        self.canvas.create_text(
+                            text_x, text_y,
+                            text=f"{net_control:+d}",  # Show + sign for positive numbers
+                            font=("Arial", 10, "bold"),
+                            fill="black",
+                            anchor="e"  # Right-align the text
+                        )
             
-            # Draw horizontal line
-            self.canvas.create_line(
-                0, coord,  # Start point
-                self.config.SQUARE_SIZE * 8, coord,  # End point
-                fill="#808080",  # Gray color
-                width=1
-            )
-            
-            # Draw vertical line
-            self.canvas.create_line(
-                coord, 0,  # Start point
-                coord, self.config.SQUARE_SIZE * 8,  # End point
-                fill="#808080",  # Gray color
-                width=1
-            )
+            # Then draw grid lines
+            for i in range(9):  # Draw 9 lines to create 8 squares
+                # Calculate coordinates
+                coord = i * self.config.SQUARE_SIZE
+                
+                # Draw horizontal line
+                self.canvas.create_line(
+                    0, coord,  # Start point
+                    self.config.SQUARE_SIZE * 8, coord,  # End point
+                    fill="#808080",  # Gray color
+                    width=1
+                )
+                
+                # Draw vertical line
+                self.canvas.create_line(
+                    coord, 0,  # Start point
+                    coord, self.config.SQUARE_SIZE * 8,  # End point
+                    fill="#808080",  # Gray color
+                    width=1
+                )
 
     def draw_pieces(self) -> None:
         """Draw the chess pieces on the board"""

@@ -1,5 +1,4 @@
-The project is a chess GUI application built in Python using tkinter, with the code organized into four main files:
-
+The project is a chess GUI application built in Python using tkinter, with the code organized into several main components:
 board_state.py: Handles all chess game logic including:
 
 Move validation and execution
@@ -7,14 +6,12 @@ Game state tracking
 Square control calculation
 Move history and undo functionality
 
-
 file_manager.py: Manages all file operations including:
 
 Saving/loading game positions in JSON format
 Managing directory structure
 Session archiving
 Position history cleanup
-
 
 chess_gui.py: Handles visualization and user interaction with:
 
@@ -24,6 +21,32 @@ Move highlighting
 Status updates and game info display
 Control panel with buttons for new game, undo, and save position
 
+board_detector.py: Handles chess board detection in screenshots:
+
+Main board region detection using contour analysis
+Advanced grid line detection with multi-scale edge detection
+Adaptive line snapping to board edges
+Square extraction and normalization
+Debug visualization output
+
+piece_detector.py: Handles chess piece detection:
+
+Template-based piece recognition with consistent 0.8x scaling
+Robust piece detection with confidence scoring
+Background-independent piece processing
+Configurable debug output levels (0-3)
+Binary piece mask generation
+FEN string position output
+Position validation
+Detailed debug visualization options
+
+template_processor.py: Manages piece template creation:
+
+Template image preprocessing
+Background removal
+Piece mask generation
+Consistent template sizing
+Light/dark square handling
 
 main.py: Application entry point providing:
 
@@ -31,8 +54,6 @@ Command-line argument parsing (log level, theme selection)
 Logging configuration
 Window management
 Component initialization and coordination
-
-
 
 Key Features:
 
@@ -43,12 +64,49 @@ Multiple color themes
 Session logging
 Error handling and recovery
 Auto-archiving of game sessions
+Automatic board position detection from screenshots
+Robust piece recognition across different board themes
+FEN string generation for detected positions
 
 The application uses:
 
 python-chess for core chess logic
 tkinter for the GUI
+OpenCV for computer vision tasks
+NumPy for image processing
 Standard library components for file operations
 Logging for debugging and error tracking
 
-The code follows object-oriented principles with clean separation of concerns, making it easy to extend with new features. 
+Computer Vision Pipeline:
+
+Board Detection:
+
+Converts input image to grayscale and applies thresholding
+Uses contour detection to find the main chess board region
+Applies multi-scale edge detection to find grid lines
+Uses adaptive line snapping to precisely locate square boundaries
+Extracts and normalizes individual squares
+
+Piece Detection:
+
+Processes template images to create clean, binary piece masks
+Removes background influence from both templates and square images
+Uses scaled (0.8x) template matching to identify pieces
+Applies consistent scaling and centering to both templates and squares
+Considers square color (light/dark) in the detection process
+Validates detected positions using chess rules
+Provides confidence scores for each piece detection
+Supports multiple debug levels for troubleshooting:
+    - Level 0: No debug output (default)
+    - Level 1: Confidence score matrix
+    - Level 2: Terminal debug information
+    - Level 3: Full visual debug output
+
+Position Output:
+
+Converts detected piece positions to FEN notation
+Validates the resulting position
+Provides confidence scores for detections
+Generates debug visualizations for verification
+
+The code follows object-oriented principles with clean separation of concerns, making it easy to extend with new features. The computer vision components are designed to be robust across different board themes and lighting conditions, with extensive debug output options for troubleshooting.
