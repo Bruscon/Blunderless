@@ -9,6 +9,11 @@ from datetime import datetime
 from chess_gui import ChessGUI, GuiConfig
 from file_manager import FileManager, FileConfig
 from board_state import BoardState
+from board_detector import BoardDetector
+from piece_detector import PieceDetector
+import chess
+import subprocess
+from mss import mss
 #from board_detection import ChessBoardDetector
 
 # Configure logging
@@ -48,8 +53,20 @@ class ChessApplication:
             file_config: Optional file management configuration
         """
         self.logger = logging.getLogger(__name__)
+        
+        # Initialize screen capture
+        self.screen = mss()
+        
+        # Initialize root window
         self.root = tk.Tk()
         self.setup_window()
+        
+        # Process templates on startup
+        self.process_templates()
+        
+        # Initialize computer vision components
+        self.board_detector = BoardDetector()
+        self.piece_detector = PieceDetector("templates")
         
         # Initialize components
         self.file_manager = FileManager(file_config)
@@ -58,8 +75,14 @@ class ChessApplication:
         # Set up callbacks
         self.gui.set_move_callback(self.on_move_made)
         
+        # Set up spacebar binding
+        self.root.bind('<space>', self.handle_screenshot_capture)
+        
         # Set up application exit handling
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        self.auto_capture = False
+        self.root.bind('<space>', self.toggle_auto_capture)
         
     def setup_window(self) -> None:
         """Configure the main window"""
@@ -109,6 +132,104 @@ class ChessApplication:
         """Start the application"""
         self.logger.info("Starting chess application")
         self.root.mainloop()
+
+    def process_templates(self):
+        """Process piece templates on application startup"""
+        try:
+            self.logger.info("Processing piece templates...")
+            # Run the template processor script
+            subprocess.run(["python", "template_processor.py"], check=True)
+            self.logger.info("Template processing completed successfully")
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Template processing failed: {e}")
+            # You might want to handle this error more gracefully
+            raise
+
+    def capture_screenshot(self):
+        """Capture screenshot from primary monitor and save it"""
+        try:
+            self.logger.info("Capturing screenshot...")
+            # Use monitor 1 instead of 2
+            screenshot = self.screen.grab(self.screen.monitors[2])
+            
+            # Save screenshot using PIL
+            from PIL import Image
+            img = Image.frombytes('RGB', screenshot.size, screenshot.rgb)
+            screenshot_path = "chess_screenshot.png"
+            img.save(screenshot_path)
+            
+            self.logger.info(f"Screenshot saved to {screenshot_path}")
+            return screenshot_path
+            
+        except Exception as e:
+            self.logger.error(f"Screenshot capture failed: {e}")
+            raise
+
+    def process_board_position(self):
+        """Process screenshot to detect chess position and update the board"""
+        try:
+            self.logger.info("Processing board position...")
+            
+            # Process the image through board detector
+            board_image, squares = self.board_detector.process_image("chess_screenshot.png")
+            
+            # Detect pieces and get FEN string
+            fen = self.piece_detector.detect_board(squares)
+            
+            # Add required FEN fields for a complete FEN string if not present
+            if len(fen.split()) == 1:
+                fen = f"{fen} w KQkq - 0 1"
+                
+            # Update the board state with new position
+            self.gui.board_state.board.set_fen(fen)
+            
+            # Update the display
+            self.gui.update_display()
+            
+            self.logger.info(f"Board position updated from image: {fen}")
+            
+        except Exception as e:
+            self.logger.error(f"Board position processing failed: {e}")
+            self.gui.set_status(f"Error processing board position: {str(e)}")
+
+    def handle_screenshot_capture(self, event=None):
+        """Handle spacebar press to capture and process board position"""
+        try:
+            self.gui.set_status("Capturing and processing board position...")
+            
+            # Capture screenshot
+            self.capture_screenshot()
+            
+            # Process the board position
+            self.process_board_position()
+            
+            self.gui.set_status("Board position updated from screenshot")
+            
+        except Exception as e:
+            self.logger.error(f"Screenshot capture and processing failed: {e}")
+            self.gui.set_status(f"Error: {str(e)}")
+
+    def toggle_auto_capture(self, event=None):
+        """Toggle automatic board position capture"""
+        self.auto_capture = not self.auto_capture
+        if self.auto_capture:
+            self.gui.set_status("Auto-capture enabled")
+            self.run_auto_capture()
+        else:
+            self.gui.set_status("Auto-capture disabled")
+
+    def run_auto_capture(self):
+        """Run continuous board position capture with delay"""
+        if self.auto_capture:
+            try:
+                self.capture_screenshot()
+                self.process_board_position()
+            except Exception as e:
+                self.logger.error(f"Auto-capture cycle failed: {e}")
+                self.gui.set_status(f"Error: {str(e)}")
+            
+            # Schedule next capture in 100ms if still enabled
+            self.root.after(100, self.run_auto_capture)
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
