@@ -55,6 +55,7 @@ class ChessGUI:
         self.root = root
         self.config = config or GuiConfig()
         self.piece_images: Dict[str, tk.PhotoImage] = {}
+        self.auto_capture_active = False 
         
         # Initialize components
         self.board_state = BoardState()
@@ -65,6 +66,24 @@ class ChessGUI:
         self._load_piece_images()
         self._setup_bindings()
         self.update_display()
+
+    def _toggle_auto_capture(self):
+        """Toggle auto-capture state and update button text"""
+        self.auto_capture_active = not self.auto_capture_active
+        if self.auto_capture_active:
+            self.auto_capture_button.config(text="Stop Auto-Capture")
+            self.set_status("Auto-capture enabled")
+            if hasattr(self, 'auto_capture_callback'):
+                self.auto_capture_callback(True)
+        else:
+            self.auto_capture_button.config(text="Start Auto-Capture")
+            self.set_status("Auto-capture disabled")
+            if hasattr(self, 'auto_capture_callback'):
+                self.auto_capture_callback(False)
+
+    def set_auto_capture_callback(self, callback):
+        """Set callback for auto-capture toggle"""
+        self.auto_capture_callback = callback
 
     def _load_piece_images(self) -> None:
         """Load piece images from the pieces directory"""
@@ -145,6 +164,10 @@ class ChessGUI:
         ttk.Button(panel, text="Undo Move", command=self._undo_move).pack(pady=5)
         ttk.Button(panel, text="Save Position", command=self._save_position).pack(pady=5)
         ttk.Button(panel, text="Flip Board", command=self._toggle_orientation).pack(pady=5)  # Add this line
+
+            # Auto-capture toggle button
+        self.auto_capture_button = ttk.Button(panel, text="Auto-Capture", command=self._toggle_auto_capture)
+        self.auto_capture_button.pack(pady=5)
         
         # Game info
         self.info_frame = ttk.LabelFrame(panel, text="Game Info")

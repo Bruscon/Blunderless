@@ -40,7 +40,7 @@ class ThreadedCapture:
                 # Add processing task to queue
                 self.queue.put("process")
                 # Wait before next capture
-                time.sleep(0.1)  # 100ms delay
+                time.sleep(0.5)  # 500ms delay
             except Exception as e:
                 self.queue.put(("error", str(e)))
 

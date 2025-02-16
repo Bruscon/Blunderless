@@ -82,13 +82,16 @@ class ChessApplication:
         # Set up application exit handling
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        # Initialize auto-capture
         self.auto_capture = False
         self.threaded_capture = ThreadedCapture(
             capture_func=self.capture_screenshot,
             process_func=self.process_board_position,
-            gui=self.root  # Change this from self.gui to self.root
+            gui=self.root
         )
-        self.root.bind('<space>', self.toggle_auto_capture)
+        
+        # Connect GUI auto-capture callback
+        self.gui.set_auto_capture_callback(self.toggle_auto_capture)
         
     def setup_window(self) -> None:
         """Configure the main window"""
@@ -218,14 +221,12 @@ class ChessApplication:
             self.logger.error(f"Screenshot capture and processing failed: {e}")
             self.gui.set_status(f"Error: {str(e)}")
 
-    def toggle_auto_capture(self, event=None):
-        """Toggle automatic board position capture"""
-        self.auto_capture = not self.auto_capture
+    def toggle_auto_capture(self, enabled: bool) -> None:
+        """Toggle automatic board position capture based on GUI button state"""
+        self.auto_capture = enabled
         if self.auto_capture:
-            self.gui.set_status("Auto-capture enabled")
             self.threaded_capture.start()
         else:
-            self.gui.set_status("Auto-capture disabled")
             self.threaded_capture.stop()
 
     def on_closing(self):
