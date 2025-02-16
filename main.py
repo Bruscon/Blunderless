@@ -5,33 +5,34 @@ import sys
 from typing import Optional
 import argparse
 from datetime import datetime
+import chess
+import subprocess
+from mss import mss
 
 from chess_gui import ChessGUI, GuiConfig
 from file_manager import FileManager, FileConfig
 from board_state import BoardState
 from board_detector import BoardDetector
 from piece_detector import PieceDetector
-import chess
-import subprocess
-from mss import mss
-#from board_detection import ChessBoardDetector
+from threaded_capture import ThreadedCapture
 
-# Configure logging
 def setup_logging(log_level: str = "INFO") -> None:
-    """Set up logging configuration"""
+    # Reset logging config
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+        
     log_dir = Path("logs")
     log_dir.mkdir(exist_ok=True)
-    
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_file = log_dir / f"chess_session_{timestamp}.log"
+    
+    file_handler = logging.FileHandler(log_file)
+    console_handler = logging.StreamHandler(sys.stdout)
     
     logging.basicConfig(
         level=getattr(logging, log_level),
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file),
-            logging.StreamHandler(sys.stdout)
-        ]
+        handlers=[file_handler, console_handler]
     )
 
 class ChessApplication:
@@ -52,7 +53,7 @@ class ChessApplication:
             gui_config: Optional GUI configuration
             file_config: Optional file management configuration
         """
-        self.logger = logging.getLogger(__name__)
+        self.logger = logging.getLogger("__main__")
         
         # Initialize screen capture
         self.screen = mss()
@@ -82,6 +83,11 @@ class ChessApplication:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.auto_capture = False
+        self.threaded_capture = ThreadedCapture(
+            capture_func=self.capture_screenshot,
+            process_func=self.process_board_position,
+            gui=self.root  # Change this from self.gui to self.root
+        )
         self.root.bind('<space>', self.toggle_auto_capture)
         
     def setup_window(self) -> None:
@@ -168,6 +174,8 @@ class ChessApplication:
     def process_board_position(self):
         """Process screenshot to detect chess position and update the board"""
         try:
+            logging.basicConfig(level=logging.INFO)
+            self.logger = logging.getLogger(__name__)
             self.logger.info("Processing board position...")
             
             # Process the image through board detector
@@ -180,13 +188,24 @@ class ChessApplication:
             if len(fen.split()) == 1:
                 fen = f"{fen} w KQkq - 0 1"
                 
+            # After FEN detection:
+            self.logger.info(f"Detected FEN: {fen}")
+
             # Update the board state with new position
+            self.gui.board_state = BoardState()  # Reset board state
             self.gui.board_state.board.set_fen(fen)
             
-            # Update the display
+            # After setting FEN:
+            self.logger.info(f"Current board FEN: {self.gui.board_state.get_fen()}")
+
+            # Force GUI refresh
+            self.root.update_idletasks()
             self.gui.update_display()
+            self.gui.redraw_board()
             
             self.logger.info(f"Board position updated from image: {fen}")
+
+
             
         except Exception as e:
             self.logger.error(f"Board position processing failed: {e}")
@@ -214,22 +233,28 @@ class ChessApplication:
         self.auto_capture = not self.auto_capture
         if self.auto_capture:
             self.gui.set_status("Auto-capture enabled")
-            self.run_auto_capture()
+            self.threaded_capture.start()
         else:
             self.gui.set_status("Auto-capture disabled")
+            self.threaded_capture.stop()
 
-    def run_auto_capture(self):
-        """Run continuous board position capture with delay"""
-        if self.auto_capture:
-            try:
-                self.capture_screenshot()
-                self.process_board_position()
-            except Exception as e:
-                self.logger.error(f"Auto-capture cycle failed: {e}")
-                self.gui.set_status(f"Error: {str(e)}")
+    def on_closing(self):
+        """Handle application shutdown"""
+        try:
+            # Stop auto-capture if running
+            if self.auto_capture:
+                self.threaded_capture.stop()
             
-            # Schedule next capture in 100ms if still enabled
-            self.root.after(100, self.run_auto_capture)
+            # Archive current session
+            self.file_manager.archive_session()
+            self.logger.info("Session archived successfully")
+            
+            # Cleanup and exit
+            self.root.destroy()
+        except Exception as e:
+            self.logger.error(f"Error during shutdown: {e}")
+            self.root.destroy()
+
 
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
