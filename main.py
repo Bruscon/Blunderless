@@ -87,7 +87,7 @@ class ChessApplication:
         self.threaded_capture = ThreadedCapture(
             capture_func=self.capture_screenshot,
             process_func=self.process_board_position,
-            gui=self.root
+            chess_gui=self.gui  # Pass ChessGUI instance instead of root
         )
 
         self.detecting_white_on_bottom = True  # Default: assume we're looking at board with white on bottom

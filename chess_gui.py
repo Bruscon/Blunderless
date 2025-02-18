@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass
 from board_state import BoardState
 from file_manager import FileManager
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -45,28 +46,45 @@ class ChessGUI:
     """
 
     def __init__(self, root: tk.Tk, config: Optional[GuiConfig] = None):
-        """
-        Initialize the chess GUI
+            self.root = root
+            self.config = config or GuiConfig()
+            self.piece_images: Dict[str, tk.PhotoImage] = {}
+            self.auto_capture_active = False
+            self.detecting_white_on_bottom = True
+
+            # Initialize components
+            self.board_state = BoardState()
+            self.file_manager = FileManager()
+            self.move_callback: Optional[Callable] = None
+            
+            # Setup GUI first
+            self._setup_gui()
+            
+            # Then initialize double buffer
+            self._setup_double_buffer()
+            
+            self._load_piece_images()
+            self._setup_bindings()
+            self.update_display()
+
+
+    def _setup_double_buffer(self):
+        """Initialize the off-screen buffer for double buffering"""
+        # Create buffer with extra space for labels
+        buffer_width = self.config.SQUARE_SIZE * 8 + 40
+        buffer_height = self.config.SQUARE_SIZE * 8 + 40
+        self.buffer_image = Image.new('RGB', (buffer_width, buffer_height), 'white')
+        self.buffer_photo = None
         
-        Args:
-            root: Tkinter root window
-            config: Optional GUI configuration
-        """
-        self.root = root
-        self.config = config or GuiConfig()
-        self.piece_images: Dict[str, tk.PhotoImage] = {}
-        self.auto_capture_active = False 
-        self.detecting_white_on_bottom = True  # Add this line
+        # Configure canvas for buffer display
+        self.canvas.config(width=buffer_width, height=buffer_height)
         
-        # Initialize components
-        self.board_state = BoardState()
-        self.file_manager = FileManager()
-        self.move_callback: Optional[Callable] = None
-        
-        self._setup_gui()
-        self._load_piece_images()
-        self._setup_bindings()
-        self.update_display()
+        # Create buffer image on canvas
+        self.buffer_id = self.canvas.create_image(
+            buffer_width//2, buffer_height//2,
+            anchor='center',
+            tags='buffer'
+        )
 
     def _toggle_auto_capture(self):
         """Toggle auto-capture state and update button text"""
@@ -87,9 +105,8 @@ class ChessGUI:
         self.auto_capture_callback = callback
 
     def _load_piece_images(self) -> None:
-        """Load piece images from the pieces directory"""
+        """Load piece images"""
         try:
-            # Map of piece symbols to filenames using the dt/lt naming convention
             piece_files = {
                 'P': 'Chess_plt45.svg.png',  # white pawn
                 'N': 'Chess_nlt45.svg.png',  # white knight
@@ -105,24 +122,57 @@ class ChessGUI:
                 'k': 'Chess_kdt45.svg.png'   # black king
             }
             
-            # Calculate piece size based on square size and scale factor
             piece_size = int(self.config.SQUARE_SIZE * self.config.PIECE_SCALE)
             
-            # Load each piece image
             for symbol, filename in piece_files.items():
                 image_path = self.config.PIECES_DIR / filename
                 if image_path.exists():
-                    # Load and resize the image
-                    image = tk.PhotoImage(file=str(image_path))
-                    # Note: subsample or zoom might be needed depending on original image size
-                    self.piece_images[symbol] = image
+                    # Load with PIL preserving transparency
+                    img = Image.open(str(image_path)).convert('RGBA')
+                    img = img.resize((piece_size, piece_size), Image.Resampling.LANCZOS)
+                    self.piece_images[symbol] = ImageTk.PhotoImage(img)
                 else:
                     logger.warning(f"Piece image not found: {image_path}")
                     
         except Exception as e:
             logger.error(f"Error loading piece images: {e}")
-            # Fall back to Unicode pieces if image loading fails
             self._setup_unicode_fallback()
+
+    def _draw_pieces_to_buffer(self, draw: ImageDraw.Draw):
+        """Draw pieces to buffer"""
+        board_offset = 20
+        
+        for square in chess.SQUARES:
+            piece = self.board_state.get_piece_at(square)
+            if piece:
+                file = chess.square_file(square)
+                rank = chess.square_rank(square)
+                
+                if self.detecting_white_on_bottom:
+                    x = file * self.config.SQUARE_SIZE + board_offset
+                    y = (7 - rank) * self.config.SQUARE_SIZE + board_offset
+                else:
+                    x = (7 - file) * self.config.SQUARE_SIZE + board_offset
+                    y = rank * self.config.SQUARE_SIZE + board_offset
+                
+                if hasattr(self, 'use_unicode'):
+                    # Unicode pieces
+                    draw.text(
+                        (x + self.config.SQUARE_SIZE//2, y + self.config.SQUARE_SIZE//2),
+                        self.UNICODE_PIECES[piece.symbol()],
+                        font=self._get_font(36),
+                        fill="white" if piece.color else "#666666",
+                        anchor="mm"
+                    )
+                else:
+                    # Image pieces
+                    piece_img = self.piece_images.get(piece.symbol())
+                    if piece_img:
+                        # Convert piece PhotoImage back to PIL for pasting
+                        piece_photo = ImageTk.getimage(piece_img)
+                        x_pos = x + (self.config.SQUARE_SIZE - piece_photo.width) // 2
+                        y_pos = y + (self.config.SQUARE_SIZE - piece_photo.height) // 2
+                        self.buffer_image.paste(piece_photo, (x_pos, y_pos), piece_photo)
 
 
     def _setup_unicode_fallback(self) -> None:
@@ -141,11 +191,12 @@ class ChessGUI:
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(expand=True, fill='both', padx=10, pady=10)
         
-        # Chess board canvas - add extra space for labels
+        # Chess board canvas
         self.canvas = tk.Canvas(
             self.main_frame,
-            width=self.config.SQUARE_SIZE * 8 + 40,  # Add 20px on each side
-            height=self.config.SQUARE_SIZE * 8 + 40  # Add 20px on each side
+            width=self.config.SQUARE_SIZE * 8 + 40,
+            height=self.config.SQUARE_SIZE * 8 + 40,
+            background='white'  # Add this
         )
         self.canvas.pack(side='left', padx=5, pady=5)
         
@@ -292,69 +343,56 @@ class ChessGUI:
         """Set callback for detection orientation changes"""
         self.detection_orientation_callback = callback
 
-    def draw_board(self) -> None:
-        """Draw the chess board with grid lines and control numbers"""
-        # Clear existing labels
-        self.canvas.delete("label")  # Add this line to clear old labels
+    def _draw_board_to_buffer(self, draw: ImageDraw.Draw):
+        """Draw board squares and grid to buffer"""
+        board_offset = 20  # Space for labels
         
-        # First draw base squares
+        # Draw squares
         for row in range(8):
             for col in range(8):
-                x1 = col * self.config.SQUARE_SIZE
-                y1 = row * self.config.SQUARE_SIZE
+                x1 = col * self.config.SQUARE_SIZE + board_offset
+                y1 = row * self.config.SQUARE_SIZE + board_offset
                 x2 = x1 + self.config.SQUARE_SIZE
                 y2 = y1 + self.config.SQUARE_SIZE
                 
-                # Use light gray as base color for better piece visibility
-                base_color = "#E0E0E0"  # Light gray background
-                
-                # Apply control visualization
+                # Get square color
                 if self.detecting_white_on_bottom:
                     square = chess.square(col, 7 - row)
                 else:
                     square = chess.square(7 - col, row)
-
+                
                 control = self.board_state.calculate_square_control(square)
-                color = self._modify_color_for_control(base_color, control)
+                color = self._modify_color_for_control("#E0E0E0", control)
                 
-                # Draw square with color but no outline
-                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
+                # Draw square
+                draw.rectangle([x1, y1, x2, y2], fill=color, outline="#808080")
                 
-                # Add control number to top right corner
+                # Draw control number if needed
                 net_control = control.white_control - control.black_control
-                if net_control != 0:  # Only show non-zero values
-                    # Position text in top right with small padding
-                    text_x = x2 - 10  # 10 pixels from right edge
-                    text_y = y1 + 10  # 10 pixels from top edge
-                    self.canvas.create_text(
-                        text_x, text_y,
-                        text=f"{net_control:+d}",  # Show + sign for positive numbers
-                        font=("Arial", 10, "bold"),
-                        fill="black",
-                        anchor="e"  # Right-align the text
-                    )
+                if net_control != 0:
+                    draw.text((x2 - 5, y1 + 5), f"{net_control:+d}", 
+                            font=self._get_font(10), fill="black", anchor="rt")
         
-        # Then draw grid lines
-        for i in range(9):  # Draw 9 lines to create 8 squares
-            # Calculate coordinates
-            coord = i * self.config.SQUARE_SIZE
+        # Draw coordinates
+        font = self._get_font(12)
+        for i in range(8):
+            # Rank numbers
+            y = i * self.config.SQUARE_SIZE + board_offset + self.config.SQUARE_SIZE//2
+            rank = 8 - i if self.detecting_white_on_bottom else i + 1
+            draw.text((10, y), str(rank), font=font, fill="black", anchor="rm")
+            draw.text((board_offset + 8 * self.config.SQUARE_SIZE + 10, y), 
+                     str(rank), font=font, fill="black", anchor="lm")
             
-            # Draw horizontal line
-            self.canvas.create_line(
-                0, coord,  # Start point
-                self.config.SQUARE_SIZE * 8, coord,  # End point
-                fill="#808080",  # Gray color
-                width=1
-            )
-            
-            # Draw vertical line
-            self.canvas.create_line(
-                coord, 0,  # Start point
-                coord, self.config.SQUARE_SIZE * 8,  # End point
-                fill="#808080",  # Gray color
-                width=1
-            )
+            # File letters
+            x = i * self.config.SQUARE_SIZE + board_offset + self.config.SQUARE_SIZE//2
+            file = chr(97 + i) if self.detecting_white_on_bottom else chr(97 + (7-i))
+            draw.text((x, 10), file, font=font, fill="black", anchor="ms")
+            draw.text((x, board_offset + 8 * self.config.SQUARE_SIZE + 10), 
+                     file, font=font, fill="black", anchor="ms")
 
+
+    def _draw_coordinates(self):
+        """Draw rank numbers and file letters"""
         # Add rank numbers (1-8)
         for rank in range(8):
             y = (7 - rank) * self.config.SQUARE_SIZE + self.config.SQUARE_SIZE // 2
@@ -367,7 +405,7 @@ class ChessGUI:
                 font=("Arial", 12),
                 fill="black",
                 anchor="e",
-                tags="label"  # Add this tag
+                tags="label"
             )
             self.canvas.create_text(
                 self.config.SQUARE_SIZE * 8 + 10, y,
@@ -375,7 +413,7 @@ class ChessGUI:
                 font=("Arial", 12),
                 fill="black",
                 anchor="w",
-                tags="label"  # Add this tag
+                tags="label"
             )
 
         # Add file letters (a-h)
@@ -390,7 +428,7 @@ class ChessGUI:
                 font=("Arial", 12),
                 fill="black",
                 anchor="s",
-                tags="label"  # Add this tag
+                tags="label"
             )
             self.canvas.create_text(
                 x, self.config.SQUARE_SIZE * 8 + 10,
@@ -398,12 +436,12 @@ class ChessGUI:
                 font=("Arial", 12),
                 fill="black",
                 anchor="n",
-                tags="label"  # Add this tag
+                tags="label"
             )
 
     def draw_pieces(self) -> None:
         """Draw the chess pieces on the board"""
-        self.canvas.delete("piece")
+        # No need to delete "piece" tag items as canvas.delete("all") in draw_board cleared everything
         for square in chess.SQUARES:
             piece = self.board_state.get_piece_at(square)
             if piece:
@@ -415,7 +453,7 @@ class ChessGUI:
                     y = (7 - rank) * self.config.SQUARE_SIZE
                 else:
                     x = (7 - file) * self.config.SQUARE_SIZE
-                    y = (rank) * self.config.SQUARE_SIZE
+                    y = rank * self.config.SQUARE_SIZE
                 
                 if hasattr(self, 'use_unicode'):
                     # Fallback to Unicode pieces
@@ -439,11 +477,112 @@ class ChessGUI:
                         )
 
     def update_display(self) -> None:
-        """Update the entire display"""
-        self.draw_board()
-        self.draw_pieces()
+        """Update display using double buffering"""
+        # Create a new buffer image 
+        buffer_width = self.config.SQUARE_SIZE * 8 + 40
+        buffer_height = self.config.SQUARE_SIZE * 8 + 40
+        self.buffer_image = Image.new('RGBA', (buffer_width, buffer_height), 'white')
+        draw = ImageDraw.Draw(self.buffer_image)
+
+        # Draw everything to buffer
+        self._draw_board_to_buffer(draw)
+        self._draw_pieces_to_buffer(draw)
+        
+        # Convert buffer to PhotoImage only once
+        self.buffer_photo = ImageTk.PhotoImage(self.buffer_image)
+        
+        # Update canvas with single operation
+        self.canvas.delete('all')
+        self.canvas.create_image(buffer_width//2, buffer_height//2, 
+                               image=self.buffer_photo, anchor='center')
+        
+        # Update status
         self.update_status()
         self.update_info()
+
+    def _draw_to_buffer(self):
+        """Draw all chess elements to the off-screen buffer"""
+        # Create a drawing context for the buffer
+        draw = ImageDraw.Draw(self.buffer_image)
+        
+        # Draw squares
+        for row in range(8):
+            for col in range(8):
+                x1 = col * self.config.SQUARE_SIZE + 20  # Add offset for labels
+                y1 = row * self.config.SQUARE_SIZE + 20
+                x2 = x1 + self.config.SQUARE_SIZE
+                y2 = y1 + self.config.SQUARE_SIZE
+                
+                # Get square color with control visualization
+                if self.detecting_white_on_bottom:
+                    square = chess.square(col, 7 - row)
+                else:
+                    square = chess.square(7 - col, row)
+                    
+                control = self.board_state.calculate_square_control(square)
+                base_color = "#E0E0E0"
+                color = self._modify_color_for_control(base_color, control)
+                
+                # Draw square
+                draw.rectangle([x1, y1, x2, y2], fill=color, outline="#808080")
+                
+                # Draw control numbers if needed
+                net_control = control.white_control - control.black_control
+                if net_control != 0:
+                    text = f"{net_control:+d}"
+                    draw.text((x2 - 10, y1 + 5), text, 
+                            fill="black", anchor="rt",
+                            font=self._get_font(10))
+        
+        # Draw grid lines
+        for i in range(9):
+            coord = i * self.config.SQUARE_SIZE + 20
+            # Horizontal
+            draw.line([(20, coord), 
+                      (self.config.SQUARE_SIZE * 8 + 20, coord)], 
+                     fill="#808080")
+            # Vertical
+            draw.line([(coord, 20), 
+                      (coord, self.config.SQUARE_SIZE * 8 + 20)], 
+                     fill="#808080")
+        
+        # Draw coordinates
+        self._draw_coordinates_to_buffer(draw)
+        
+        # Draw pieces
+        self._draw_pieces_to_buffer(draw)
+
+    def _get_font(self, size: int):
+        """Helper to get PIL ImageFont"""
+        try:
+            return ImageFont.truetype("arial.ttf", size)
+        except:
+            return ImageFont.load_default()
+
+    def _draw_coordinates_to_buffer(self, draw: ImageDraw.Draw):
+        """Draw rank numbers and file letters to buffer"""
+        font = self._get_font(12)
+        
+        # Ranks
+        for rank in range(8):
+            y = (7 - rank) * self.config.SQUARE_SIZE + self.config.SQUARE_SIZE//2 + 20
+            rank_num = rank + 1 if self.detecting_white_on_bottom else 8 - rank
+            # Left side
+            draw.text((10, y), str(rank_num), fill="black", anchor="rm", font=font)
+            # Right side
+            draw.text((self.config.SQUARE_SIZE * 8 + 30, y), 
+                     str(rank_num), fill="black", anchor="lm", font=font)
+        
+        # Files
+        for file in range(8):
+            x = file * self.config.SQUARE_SIZE + self.config.SQUARE_SIZE//2 + 20
+            file_letter = chr(97 + file) if self.detecting_white_on_bottom else chr(97 + (7-file))
+            # Top
+            draw.text((x, 10), file_letter, fill="black", anchor="ms", font=font)
+            # Bottom
+            draw.text((x, self.config.SQUARE_SIZE * 8 + 30), 
+                     file_letter, fill="black", anchor="ms", font=font)
+
 
     def update_status(self) -> None:
         """Update the status bar with game state"""
