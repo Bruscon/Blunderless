@@ -33,8 +33,7 @@ class BoardState:
         self.board = chess.Board()
         self.move_history: List[chess.Move] = []
         self._selected_square: Optional[int] = None
-        self.white_on_bottom: bool = True  # Add this line
-        
+            
     @property
     def selected_square(self) -> Optional[int]:
         """Currently selected square, if any"""
@@ -102,13 +101,9 @@ class BoardState:
             SquareControl: Control information for the square
         """
         try:
-            # Get raw control counts
             white_control = len(list(self.board.attackers(chess.WHITE, square)))
             black_control = len(list(self.board.attackers(chess.BLACK, square)))
             
-            # If board is flipped, swap the control values
-            if not self.white_on_bottom:
-                white_control, black_control = black_control, white_control
                 
             return SquareControl(white_control, black_control)
         except Exception as e:
@@ -173,11 +168,6 @@ class BoardState:
         """
         return self.board.turn
 
-    def toggle_orientation(self) -> None:
-        """Toggle the board orientation between white and black on bottom"""
-        self.white_on_bottom = not self.white_on_bottom
-        logger.info(f"Board orientation toggled - White on bottom: {self.white_on_bottom}")
-        
     def __str__(self) -> str:
         """String representation of the current board position"""
         return str(self.board)

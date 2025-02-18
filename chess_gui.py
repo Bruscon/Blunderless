@@ -56,6 +56,7 @@ class ChessGUI:
         self.config = config or GuiConfig()
         self.piece_images: Dict[str, tk.PhotoImage] = {}
         self.auto_capture_active = False 
+        self.detecting_white_on_bottom = True  # Add this line
         
         # Initialize components
         self.board_state = BoardState()
@@ -71,12 +72,12 @@ class ChessGUI:
         """Toggle auto-capture state and update button text"""
         self.auto_capture_active = not self.auto_capture_active
         if self.auto_capture_active:
-            self.auto_capture_button.config(text="Stop Auto-Capture")
+            self.auto_capture_button.config(text="Auto-Capture")
             self.set_status("Auto-capture enabled")
             if hasattr(self, 'auto_capture_callback'):
                 self.auto_capture_callback(True)
         else:
-            self.auto_capture_button.config(text="Start Auto-Capture")
+            self.auto_capture_button.config(text="Auto-Capture")
             self.set_status("Auto-capture disabled")
             if hasattr(self, 'auto_capture_callback'):
                 self.auto_capture_callback(False)
@@ -140,11 +141,11 @@ class ChessGUI:
         self.main_frame = ttk.Frame(self.root)
         self.main_frame.pack(expand=True, fill='both', padx=10, pady=10)
         
-        # Chess board canvas
+        # Chess board canvas - add extra space for labels
         self.canvas = tk.Canvas(
             self.main_frame,
-            width=self.config.SQUARE_SIZE * 8,
-            height=self.config.SQUARE_SIZE * 8
+            width=self.config.SQUARE_SIZE * 8 + 40,  # Add 20px on each side
+            height=self.config.SQUARE_SIZE * 8 + 40  # Add 20px on each side
         )
         self.canvas.pack(side='left', padx=5, pady=5)
         
@@ -163,9 +164,15 @@ class ChessGUI:
         ttk.Button(panel, text="New Game", command=self._new_game).pack(pady=5)
         ttk.Button(panel, text="Undo Move", command=self._undo_move).pack(pady=5)
         ttk.Button(panel, text="Save Position", command=self._save_position).pack(pady=5)
-        ttk.Button(panel, text="Flip Board", command=self._toggle_orientation).pack(pady=5)  # Add this line
+        # Detection orientation button
+        self.detect_orientation_button = ttk.Button(
+            panel, 
+            text="Detecting White Bottom", 
+            command=self._toggle_detection_orientation
+        )
+        self.detect_orientation_button.pack(pady=5)
 
-            # Auto-capture toggle button
+        # Auto-capture toggle button
         self.auto_capture_button = ttk.Button(panel, text="Auto-Capture", command=self._toggle_auto_capture)
         self.auto_capture_button.pack(pady=5)
         
@@ -191,24 +198,12 @@ class ChessGUI:
         """Convert canvas coordinates to chess square"""
         file = x // self.config.SQUARE_SIZE
         rank = 7 - (y // self.config.SQUARE_SIZE)
-        
-        if not self.board_state.white_on_bottom:
-            # Flip coordinates when black is on bottom
-            file = 7 - file
-            rank = 7 - rank
-            
         return chess.square(file, rank)
 
     def _get_coords_from_square(self, square: int) -> Tuple[int, int]:
         """Convert chess square to canvas coordinates"""
         file = chess.square_file(square)
         rank = chess.square_rank(square)
-        
-        if not self.board_state.white_on_bottom:
-            # Flip coordinates when black is on bottom
-            file = 7 - file
-            rank = 7 - rank
-            
         return (file * self.config.SQUARE_SIZE, (7 - rank) * self.config.SQUARE_SIZE)
 
     def _on_square_clicked(self, event) -> None:
@@ -277,68 +272,134 @@ class ChessGUI:
         self.board_state.selected_square = None
         self.canvas.delete("highlight")
 
-    def _toggle_orientation(self) -> None:
-        """Toggle the board orientation"""
-        self.board_state.toggle_orientation()
-        self._deselect()  # Clear any selections
-        self.update_display()  # Redraw the board
-        self.set_status(f"Board flipped - {'White' if self.board_state.white_on_bottom else 'Black'} on bottom")
+
+    def _toggle_detection_orientation(self):
+        """Toggle whether we're detecting a board with white or black on bottom"""
+        if hasattr(self, 'detection_orientation_callback'):
+            # Get current state from button text
+            is_currently_white = "White" in self.detect_orientation_button['text']
+            # Toggle it
+            new_is_white = not is_currently_white
+            # Update button text
+            self.detect_orientation_button['text'] = f"Detecting {'White' if new_is_white else 'Black'} Bottom"
+            # Update local state
+            self.detecting_white_on_bottom = new_is_white
+            # Call the callback
+            self.detection_orientation_callback(new_is_white)
+            self.set_status(f"Now detecting board with {'White' if new_is_white else 'Black'} on bottom")
+
+    def set_detection_orientation_callback(self, callback):
+        """Set callback for detection orientation changes"""
+        self.detection_orientation_callback = callback
 
     def draw_board(self) -> None:
-            """Draw the chess board with grid lines and control numbers"""
-            # First draw base squares
-            for row in range(8):
-                for col in range(8):
-                    x1 = col * self.config.SQUARE_SIZE
-                    y1 = row * self.config.SQUARE_SIZE
-                    x2 = x1 + self.config.SQUARE_SIZE
-                    y2 = y1 + self.config.SQUARE_SIZE
-                    
-                    # Use light gray as base color for better piece visibility
-                    base_color = "#E0E0E0"  # Light gray background
-                    
-                    # Apply control visualization
+        """Draw the chess board with grid lines and control numbers"""
+        # Clear existing labels
+        self.canvas.delete("label")  # Add this line to clear old labels
+        
+        # First draw base squares
+        for row in range(8):
+            for col in range(8):
+                x1 = col * self.config.SQUARE_SIZE
+                y1 = row * self.config.SQUARE_SIZE
+                x2 = x1 + self.config.SQUARE_SIZE
+                y2 = y1 + self.config.SQUARE_SIZE
+                
+                # Use light gray as base color for better piece visibility
+                base_color = "#E0E0E0"  # Light gray background
+                
+                # Apply control visualization
+                if self.detecting_white_on_bottom:
                     square = chess.square(col, 7 - row)
-                    control = self.board_state.calculate_square_control(square)
-                    color = self._modify_color_for_control(base_color, control)
-                    
-                    # Draw square with color but no outline
-                    self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
-                    
-                    # Add control number to top right corner
-                    net_control = control.white_control - control.black_control
-                    if net_control != 0:  # Only show non-zero values
-                        # Position text in top right with small padding
-                        text_x = x2 - 10  # 10 pixels from right edge
-                        text_y = y1 + 10  # 10 pixels from top edge
-                        self.canvas.create_text(
-                            text_x, text_y,
-                            text=f"{net_control:+d}",  # Show + sign for positive numbers
-                            font=("Arial", 10, "bold"),
-                            fill="black",
-                            anchor="e"  # Right-align the text
-                        )
+                else:
+                    square = chess.square(7 - col, row)
+
+                control = self.board_state.calculate_square_control(square)
+                color = self._modify_color_for_control(base_color, control)
+                
+                # Draw square with color but no outline
+                self.canvas.create_rectangle(x1, y1, x2, y2, fill=color, outline="")
+                
+                # Add control number to top right corner
+                net_control = control.white_control - control.black_control
+                if net_control != 0:  # Only show non-zero values
+                    # Position text in top right with small padding
+                    text_x = x2 - 10  # 10 pixels from right edge
+                    text_y = y1 + 10  # 10 pixels from top edge
+                    self.canvas.create_text(
+                        text_x, text_y,
+                        text=f"{net_control:+d}",  # Show + sign for positive numbers
+                        font=("Arial", 10, "bold"),
+                        fill="black",
+                        anchor="e"  # Right-align the text
+                    )
+        
+        # Then draw grid lines
+        for i in range(9):  # Draw 9 lines to create 8 squares
+            # Calculate coordinates
+            coord = i * self.config.SQUARE_SIZE
             
-            # Then draw grid lines
-            for i in range(9):  # Draw 9 lines to create 8 squares
-                # Calculate coordinates
-                coord = i * self.config.SQUARE_SIZE
-                
-                # Draw horizontal line
-                self.canvas.create_line(
-                    0, coord,  # Start point
-                    self.config.SQUARE_SIZE * 8, coord,  # End point
-                    fill="#808080",  # Gray color
-                    width=1
-                )
-                
-                # Draw vertical line
-                self.canvas.create_line(
-                    coord, 0,  # Start point
-                    coord, self.config.SQUARE_SIZE * 8,  # End point
-                    fill="#808080",  # Gray color
-                    width=1
-                )
+            # Draw horizontal line
+            self.canvas.create_line(
+                0, coord,  # Start point
+                self.config.SQUARE_SIZE * 8, coord,  # End point
+                fill="#808080",  # Gray color
+                width=1
+            )
+            
+            # Draw vertical line
+            self.canvas.create_line(
+                coord, 0,  # Start point
+                coord, self.config.SQUARE_SIZE * 8,  # End point
+                fill="#808080",  # Gray color
+                width=1
+            )
+
+        # Add rank numbers (1-8)
+        for rank in range(8):
+            y = (7 - rank) * self.config.SQUARE_SIZE + self.config.SQUARE_SIZE // 2
+            # Use correct rank number based on orientation
+            rank_num = rank + 1 if self.detecting_white_on_bottom else 8 - rank
+            # Add rank number on both sides of the board
+            self.canvas.create_text(
+                -10, y,
+                text=str(rank_num),
+                font=("Arial", 12),
+                fill="black",
+                anchor="e",
+                tags="label"  # Add this tag
+            )
+            self.canvas.create_text(
+                self.config.SQUARE_SIZE * 8 + 10, y,
+                text=str(rank_num),
+                font=("Arial", 12),
+                fill="black",
+                anchor="w",
+                tags="label"  # Add this tag
+            )
+
+        # Add file letters (a-h)
+        for file in range(8):
+            x = file * self.config.SQUARE_SIZE + self.config.SQUARE_SIZE // 2
+            # Use correct file letter based on orientation
+            file_letter = chr(97 + file) if self.detecting_white_on_bottom else chr(97 + (7-file))
+            # Add file letter on both top and bottom of the board
+            self.canvas.create_text(
+                x, -10,
+                text=file_letter,
+                font=("Arial", 12),
+                fill="black",
+                anchor="s",
+                tags="label"  # Add this tag
+            )
+            self.canvas.create_text(
+                x, self.config.SQUARE_SIZE * 8 + 10,
+                text=file_letter,
+                font=("Arial", 12),
+                fill="black",
+                anchor="n",
+                tags="label"  # Add this tag
+            )
 
     def draw_pieces(self) -> None:
         """Draw the chess pieces on the board"""
@@ -348,14 +409,13 @@ class ChessGUI:
             if piece:
                 file = chess.square_file(square)
                 rank = chess.square_rank(square)
-                
-                if not self.board_state.white_on_bottom:
-                    # Flip coordinates when black is on bottom
-                    file = 7 - file
-                    rank = 7 - rank
-                    
-                x = file * self.config.SQUARE_SIZE
-                y = (7 - rank) * self.config.SQUARE_SIZE
+                                
+                if self.detecting_white_on_bottom:
+                    x = file * self.config.SQUARE_SIZE
+                    y = (7 - rank) * self.config.SQUARE_SIZE
+                else:
+                    x = (7 - file) * self.config.SQUARE_SIZE
+                    y = (rank) * self.config.SQUARE_SIZE
                 
                 if hasattr(self, 'use_unicode'):
                     # Fallback to Unicode pieces

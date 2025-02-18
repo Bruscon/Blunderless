@@ -89,6 +89,9 @@ class ChessApplication:
             process_func=self.process_board_position,
             gui=self.root
         )
+
+        self.detecting_white_on_bottom = True  # Default: assume we're looking at board with white on bottom
+        self.gui.set_detection_orientation_callback(self.toggle_detection_orientation)
         
         # Connect GUI auto-capture callback
         self.gui.set_auto_capture_callback(self.toggle_auto_capture)
@@ -174,7 +177,6 @@ class ChessApplication:
             raise
 
     def process_board_position(self):
-        """Process screenshot to detect chess position and update the board"""
         try:
             self.logger.info("Processing board position...")
             
@@ -183,22 +185,60 @@ class ChessApplication:
             
             # Detect pieces and get FEN string
             fen = self.piece_detector.detect_board(squares)
-            self.logger.info(f"Detected FEN: {fen}")
+            self.logger.info(f"Raw detected FEN: {fen}")
             
-            # Add required FEN fields for a complete FEN string if not present
+            # If detecting black-on-bottom board, need to flip the FEN position
+            if not self.detecting_white_on_bottom:
+                # Split FEN into position and other components
+                fen_parts = fen.split()
+                position = fen_parts[0]
+                
+                # Split into ranks
+                ranks = position.split('/')
+                
+                # For each rank, reverse the piece positions within it
+                flipped_ranks = []
+                for rank in ranks:
+                    # Build the rank in reverse, handling numbers properly
+                    new_rank = ""
+                    current_number = 0
+                    
+                    # Go through rank in reverse
+                    for char in reversed(rank):
+                        if char.isdigit():
+                            current_number = current_number * 10 + int(char)
+                        else:
+                            if current_number > 0:
+                                new_rank += str(current_number)
+                                current_number = 0
+                            new_rank += char
+                            
+                    # Handle any trailing number
+                    if current_number > 0:
+                        new_rank += str(current_number)
+                        
+                    flipped_ranks.append(new_rank)
+                
+                # Reverse the order of ranks
+                flipped_ranks = flipped_ranks[::-1]
+                
+                # Rejoin the FEN string
+                fen_parts[0] = '/'.join(flipped_ranks)
+                fen = ' '.join(fen_parts)
+                self.logger.info(f"Flipped FEN for black orientation: {fen}")
+            
+            # Add required FEN fields if not present
             if len(fen.split()) == 1:
                 fen = f"{fen} w KQkq - 0 1"
                 
-            # Update the board state with new position
-            self.gui.board_state = BoardState()  # Reset board state
+            # Update the board state without any orientation changes
+            self.gui.board_state = BoardState()
             self.gui.board_state.board.set_fen(fen)
             self.logger.info(f"Current board FEN: {self.gui.board_state.get_fen()}")
             
             # Force GUI refresh
             self.root.update_idletasks()
             self.gui.update_display()
-            
-            self.logger.info(f"Board position updated from image: {fen}")
             
         except Exception as e:
             self.logger.error(f"Board position processing failed: {e}")
@@ -228,6 +268,11 @@ class ChessApplication:
             self.threaded_capture.start()
         else:
             self.threaded_capture.stop()
+
+    def toggle_detection_orientation(self, is_white_bottom: bool) -> None:
+        """Set whether we're detecting a board with white or black on bottom"""
+        self.detecting_white_on_bottom = is_white_bottom
+        self.logger.info(f"Board detection orientation set to: {'White' if is_white_bottom else 'Black'} on bottom")
 
     def on_closing(self):
         """Handle application shutdown"""
