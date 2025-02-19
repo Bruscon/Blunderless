@@ -292,6 +292,17 @@ class ChessApplication:
             self.root.destroy()
 
 
+def get_theme_config(theme: str) -> GuiConfig:
+    """Get GUI configuration for specified theme"""
+    # All themes now use the same base configuration since we simplified GuiConfig
+    # We can add theme-specific settings here if needed in the future
+    return GuiConfig(
+        SQUARE_SIZE=64,
+        BOARD_PADDING=20,
+        PIECE_SCALE=0.8,
+        PIECES_DIR=Path("pieces")
+    )
+
 def parse_arguments() -> argparse.Namespace:
     """Parse command line arguments"""
     parser = argparse.ArgumentParser(description="Chess Application")
@@ -301,30 +312,7 @@ def parse_arguments() -> argparse.Namespace:
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
         help="Set the logging level"
     )
-    parser.add_argument(
-        "--theme",
-        default="default",
-        choices=["default", "blue", "green"],
-        help="Set the color theme"
-    )
     return parser.parse_args()
-
-def get_theme_config(theme: str) -> GuiConfig:
-    """Get GUI configuration for specified theme"""
-    themes = {
-        "default": GuiConfig(),
-        "blue": GuiConfig(
-            LIGHT_SQUARE="#B6D0E2",
-            DARK_SQUARE="#4682B4",
-            HIGHLIGHT_COLOR="#FFD700"
-        ),
-        "green": GuiConfig(
-            LIGHT_SQUARE="#C8E6C9",
-            DARK_SQUARE="#2E7D32",
-            HIGHLIGHT_COLOR="#FFA000"
-        )
-    }
-    return themes.get(theme, GuiConfig())
 
 def main() -> None:
     """Main entry point for the chess application"""
@@ -335,8 +323,8 @@ def main() -> None:
         # Setup logging
         setup_logging(args.log_level)
         
-        # Get theme configuration
-        gui_config = get_theme_config(args.theme)
+        # Create default GUI configuration
+        gui_config = GuiConfig()
         
         # Create and run application
         app = ChessApplication(gui_config=gui_config)
@@ -345,6 +333,7 @@ def main() -> None:
     except Exception as e:
         logging.critical(f"Application failed to start: {e}", exc_info=True)
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()
